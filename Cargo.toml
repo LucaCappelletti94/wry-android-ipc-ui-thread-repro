@@ -12,3 +12,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "=2.12.4", features = [] }
+
+[features]
+page-load = []

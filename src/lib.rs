@@ -25,8 +25,20 @@ fn read_url(webview: tauri::Webview) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![read_url])
+  let builder = tauri::Builder::default().invoke_handler(tauri::generate_handler![read_url]);
+  // wry calls Tauri's page load handler from `onPageStarted` and `onPageFinished` on the UI thread.
+  #[cfg(feature = "page-load")]
+  let builder = builder.on_page_load(|webview, _| {
+    println!("REPRO on_page_load started, on_ui_thread={}", on_ui_thread());
+    let start = Instant::now();
+    let url = webview.url();
+    println!(
+      "REPRO on_page_load returned after {} ms, ok={}",
+      start.elapsed().as_millis(),
+      url.is_ok()
+    );
+  });
+  builder
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }

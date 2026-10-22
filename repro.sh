@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Usage: ./repro.sh <dev|pr|inline> [runs]
+# Usage: ./repro.sh <release|dev|pr|inline> [runs] [command|page-load]
 # Builds the app against the chosen wry, installs it on $ANDROID_SERIAL and cold-starts it
-# `runs` times. Each start calls the sync command `read_url` once and prints its log lines.
+# `runs` times. `command` calls the sync command `read_url` from the page, and `page-load`
+# also calls `webview.url()` from Tauri's `on_page_load`. Each run prints its log lines.
 set -euo pipefail
-variant=${1:?dev, pr or inline}
+variant=${1:?release, dev, pr or inline}
 runs=${2:-3}
+mode=${3:-command}
 cd "$(dirname "$0")"
 : "${ANDROID_SERIAL:?set ANDROID_SERIAL to the emulator or device serial}"
 export ANDROID_SERIAL
@@ -12,10 +14,15 @@ app=com.example.wryipcthreadrepro
 pr_rev=0c95f9a3577c4e5b9e9b6fc6ea69597dd772d272
 
 case "$variant" in
-  dev) marker='webViewClient.currentUrl' ;;
+  release | dev) marker='webViewClient.currentUrl' ;;
   pr) marker='dispatcher.execute' ;;
   inline) marker='webView.url ?: "about:blank"' ;;
   *) echo "unknown variant $variant" >&2; exit 1 ;;
+esac
+case "$mode" in
+  command) features=() ;;
+  page-load) features=(--features page-load) ;;
+  *) echo "unknown mode $mode" >&2; exit 1 ;;
 esac
 
 if [ "$variant" = inline ] && [ ! -d .wry-inline ]; then
@@ -29,8 +36,8 @@ mkdir -p .cargo
 cp "variants/$variant.toml" .cargo/config.toml
 if [ -z "${SKIP_BUILD:-}" ]; then
   [ -d gen/android ] || cargo tauri android init
-  export CARGO_TARGET_DIR="target/$variant"
-  cargo tauri android build --debug --apk -t "${TARGET:-x86_64}" >&2
+  export CARGO_TARGET_DIR="target/$variant-$mode"
+  cargo tauri android build --debug --apk -t "${TARGET:-x86_64}" "${features[@]}" >&2
   # Catches a stale generated Ipc.kt from another variant.
   if ! grep -qF "$marker" gen/android/app/src/main/java/com/example/wryipcthreadrepro/generated/Ipc.kt; then
     echo "generated Ipc.kt does not match $variant" >&2
@@ -49,7 +56,7 @@ for i in $(seq 1 "$runs"); do
   log=""
   for _ in $(seq 1 60); do
     log=$(adb logcat -d -v time -T "$since" -s RustStdoutStderr:I | grep -E "\( *$pid\): .*(REPRO|panicked at|Result::unwrap)" || true)
-    if grep -q 'REPRO read_url returned' <<<"$log"; then
+    if grep -qE 'REPRO [a-z_]+ returned' <<<"$log"; then
       # The crash follows the return within milliseconds.
       sleep 2
       log=$(adb logcat -d -v time -T "$since" -s RustStdoutStderr:I | grep -E "\( *$pid\): .*(REPRO|panicked at|Result::unwrap)" || true)
@@ -59,11 +66,11 @@ for i in $(seq 1 "$runs"); do
   done
   if grep -q 'Result::unwrap' <<<"$log"; then
     outcome=crashed; crashed=$((crashed + 1))
-  elif grep -q 'REPRO read_url returned' <<<"$log"; then
+  elif grep -qE 'REPRO [a-z_]+ returned' <<<"$log"; then
     outcome=returned; returned=$((returned + 1))
   fi
   echo "run $i: $outcome"
   sed -E 's/ I\/RustStdoutStderr\( *[0-9]+\): / /; s/^/  /' <<<"$log"
 done
 adb shell am force-stop "$app"
-echo "$variant: $returned returned normally, $crashed crashed, $((runs - returned - crashed)) no result"
+echo "$variant $mode: $returned returned normally, $crashed crashed, $((runs - returned - crashed)) no result"

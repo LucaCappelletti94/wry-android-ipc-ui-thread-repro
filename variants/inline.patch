@@ -1,0 +1,13 @@
+--- a/src/android/kotlin/Ipc.kt
++++ b/src/android/kotlin/Ipc.kt
+@@ -19,9 +19,7 @@
+                 // getData throws on ArrayBuffer payloads.
+                 val body = try { message.data } catch (e: IllegalStateException) { null }
+                 body?.let { m ->
+-                    val url = requestUrl(sourceOrigin)
+-                    // Keep the UI thread available for handlers that wait on the main pipe.
+-                    dispatcher.execute { Rust.ipc(webView.id, url, m) }
++                    Rust.ipc(webView.id, webView.url ?: "about:blank", m)
+                 }
+             }
+         } else {

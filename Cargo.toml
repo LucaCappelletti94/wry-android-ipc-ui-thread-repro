@@ -1,0 +1,14 @@
+[package]
+name = "wry-ipc-thread-repro"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "wry_ipc_thread_repro_lib"
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.4", features = [] }

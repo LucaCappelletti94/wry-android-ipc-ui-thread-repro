@@ -1,0 +1,3 @@
+# wry dev at the merge base of tauri-apps/wry#1891
+[patch.crates-io]
+wry = { git = "https://github.com/tauri-apps/wry", rev = "6642074224a2db9eb197f69d21b300b02b5dcd49" }
